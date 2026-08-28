@@ -13,6 +13,7 @@ import (
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/idgen"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage/db"
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/utils"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/pkg/base62"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -20,16 +21,12 @@ import (
 const cacheTTL = time.Hour
 
 type Service struct {
-	store      storage.URLStore
+	store      storage.Store
 	cacheStore cache.Cache
 	idGen      *idgen.Generator
 }
 
-func NewService(
-	store storage.URLStore,
-	cacheStore cache.Cache,
-	idGen *idgen.Generator,
-) *Service {
+func NewService(store storage.Store, cacheStore cache.Cache, idGen *idgen.Generator) *Service {
 	return &Service{
 		store:      store,
 		cacheStore: cacheStore,
@@ -37,10 +34,7 @@ func NewService(
 	}
 }
 
-func (s *Service) CreateShortURL(
-	ctx context.Context,
-	longURL string,
-) (string, error) {
+func (s *Service) CreateShortURL(ctx context.Context, longURL string, userID *int64) (string, error) {
 	if longURL == "" {
 		return "", apperrors.ErrInvalidLongURL
 	}
@@ -60,7 +54,7 @@ func (s *Service) CreateShortURL(
 		ShortCode:     shortCode,
 		LongUrl:       longURL,
 		LongUrlHash:   longURLHash,
-		UserID:        pgtype.Int8{Valid: false},
+		UserID:        pgtype.Int8{Int64: utils.DerefOrZero(userID), Valid: userID != nil},
 		IsCustomAlias: false,
 		ExpiresAt:     pgtype.Timestamptz{Valid: false},
 	})
@@ -76,10 +70,7 @@ func (s *Service) CreateShortURL(
 
 }
 
-func (s *Service) GetLongURL(
-	ctx context.Context,
-	shortCode string,
-) (string, error) {
+func (s *Service) GetLongURL(ctx context.Context, shortCode string) (string, error) {
 	if shortCode == "" {
 		return "", apperrors.ErrURLNotFound
 	}
@@ -119,4 +110,48 @@ func (s *Service) GetLongURL(
 
 	return url.LongUrl, nil
 
+}
+
+func (s *Service) CreateUser(ctx context.Context, email string) (db.User, string, error) {
+	normalizedEmail, err := utils.NormalizeEmail(email)
+	if err != nil {
+		return db.User{}, "", apperrors.ErrInvalidEmail
+	}
+
+	id, err := s.idGen.NextID()
+	if err != nil {
+		return db.User{}, "", apperrors.ErrInternal
+	}
+
+	apiKey, err := utils.GenerateAPIKey()
+	if err != nil {
+		return db.User{}, "", apperrors.ErrInternal
+	}
+
+	hashedAPIKey := utils.HashAPIKey(apiKey)
+
+	user, err := s.store.CreateUser(ctx, db.CreateUserParams{
+		ID:         int64(id),
+		Email:      normalizedEmail,
+		ApiKeyHash: hashedAPIKey,
+	})
+	if err != nil {
+		return db.User{}, "", apperrors.ErrInternal
+	}
+
+	return user, apiKey, nil
+
+}
+
+func (s *Service) GetUserByAPIKeyHash(ctx context.Context, apiKeyHash string) (db.User, error) {
+	if apiKeyHash == "" {
+		return db.User{}, apperrors.ErrInternal
+	}
+
+	user, err := s.store.GetUserByAPIKeyHash(ctx, apiKeyHash)
+	if err != nil {
+		return db.User{}, apperrors.ErrInternal
+	}
+
+	return user, nil
 }

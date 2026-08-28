@@ -14,6 +14,8 @@ var (
 	ErrClockMovedBackwards = errors.New("idgen: system clock moved backwards")
 	ErrInvalidNodeID       = errors.New("idgen: node id out of range")
 	ErrCacheMiss           = errors.New("cache miss") // Don't add this to GetStatusCode as client will never see this
+
+	ErrInvalidEmail = errors.New("invalid email provided")
 )
 
 func GetStatusCode(err error) int {
@@ -35,6 +37,9 @@ func GetStatusCode(err error) int {
 
 	case errors.Is(err, ErrInternal):
 		return http.StatusInternalServerError
+
+	case errors.Is(err, ErrInvalidEmail):
+		return http.StatusBadRequest
 
 	default:
 		return http.StatusInternalServerError

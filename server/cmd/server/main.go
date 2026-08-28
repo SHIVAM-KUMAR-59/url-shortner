@@ -67,8 +67,10 @@ func main() {
 	// Routes
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /api/v1/shorten", h.HandleShorten)
+	mux.Handle("POST /api/v1/shorten", h.AuthMiddleware(http.HandlerFunc(h.HandleShorten)))
 	mux.HandleFunc("GET /{short_code}", h.HandleRedirect)
+
+	mux.HandleFunc("POST /api/v1/users", h.HandleCreateUser)
 
 	addr := ":" + cfg.ServerPort
 	log.Println("starting server on port", cfg.ServerPort)
