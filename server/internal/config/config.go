@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"log"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -16,7 +17,7 @@ type Config struct {
 
 func Load() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
-		return nil, errors.New("failed to load .env file")
+		log.Println(".env file not found, using environment variables")
 	}
 
 	databaseURL := os.Getenv("DATABASE_URL")
@@ -31,12 +32,12 @@ func Load() (*Config, error) {
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "redis://localhost:6379"
+		redisURL = "redis://redis:6379/0"
 	}
 
 	etcdEndpoints := os.Getenv("ETCD_ENDPOINTS")
 	if etcdEndpoints == "" {
-		etcdEndpoints = "http://localhost:2379"
+		etcdEndpoints = "etcd:2379"
 	}
 
 	return &Config{
@@ -45,5 +46,4 @@ func Load() (*Config, error) {
 		RedisURL:      redisURL,
 		EtcdEndpoints: etcdEndpoints,
 	}, nil
-
 }
