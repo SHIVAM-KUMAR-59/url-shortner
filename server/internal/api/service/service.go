@@ -26,7 +26,11 @@ type Service struct {
 	idGen      *idgen.Generator
 }
 
-func NewService(store storage.Store, cacheStore cache.Cache, idGen *idgen.Generator) *Service {
+func NewService(
+	store storage.Store,
+	cacheStore cache.Cache,
+	idGen *idgen.Generator,
+) *Service {
 	return &Service{
 		store:      store,
 		cacheStore: cacheStore,
@@ -34,14 +38,19 @@ func NewService(store storage.Store, cacheStore cache.Cache, idGen *idgen.Genera
 	}
 }
 
-func (s *Service) CreateShortURL(ctx context.Context, longURL string, userID *int64) (string, error) {
+func (s *Service) CreateShortURL(
+	ctx context.Context,
+	longURL string,
+	userID *int64,
+) (string, error) {
 	if longURL == "" {
-		return "", apperrors.ErrInvalidLongURL
+		return "", apperrors.ValidationError("invalid URL provided")
 	}
 
 	id, err := s.idGen.NextID()
 	if err != nil {
-		return "", apperrors.ErrInternal
+		log.Printf("failed to generate URL ID: %v", err)
+		return "", apperrors.InternalServerError("something went wrong, please try again")
 	}
 
 	shortCode := base62.Encode(id)
@@ -59,7 +68,8 @@ func (s *Service) CreateShortURL(ctx context.Context, longURL string, userID *in
 		ExpiresAt:     pgtype.Timestamptz{Valid: false},
 	})
 	if err != nil {
-		return "", apperrors.ErrInternal
+		log.Printf("failed to create URL: %v", err)
+		return "", apperrors.InternalServerError("something went wrong, please try again")
 	}
 
 	if err := s.cacheStore.Set(ctx, shortCode, longURL, cacheTTL); err != nil {
@@ -70,9 +80,12 @@ func (s *Service) CreateShortURL(ctx context.Context, longURL string, userID *in
 
 }
 
-func (s *Service) GetLongURL(ctx context.Context, shortCode string) (string, error) {
+func (s *Service) GetLongURL(
+	ctx context.Context,
+	shortCode string,
+) (string, error) {
 	if shortCode == "" {
-		return "", apperrors.ErrURLNotFound
+		return "", apperrors.BadRequestError("invalid code entered")
 	}
 
 	// Fast path: return immediately on cache hit.
@@ -81,29 +94,28 @@ func (s *Service) GetLongURL(ctx context.Context, shortCode string) (string, err
 		return longURL, nil
 	}
 
-	// Graceful degradation:
-	// - Cache miss: fall through to DB.
-	// - Redis/cache failure: also fall through to DB.
-	if err != nil && !errors.Is(err, apperrors.ErrCacheMiss) {
+	// Cache miss and Redis failures both gracefully fall back to PostgreSQL.
+	if !errors.Is(err, apperrors.ErrCacheMiss) {
 		log.Printf("cache get failed for short code %s: %v", shortCode, err)
 	}
 
-	// Cache miss or cache failure: fetch from the database.
 	url, err := s.store.GetURLByShortCode(ctx, shortCode)
 	if err != nil {
-		return "", apperrors.ErrURLNotFound
+		// Ideally distinguish "no rows" from an actual database failure.
+		// For now, avoid exposing storage details to the client.
+		log.Printf("failed to get URL for short code %s: %v", shortCode, err)
+		return "", apperrors.NotFoundError("URL", shortCode)
 	}
 
 	if !url.IsActive {
-		return "", apperrors.ErrURLInactive
+		return "", apperrors.InactiveError("this URL is inactive")
 	}
 
 	if url.ExpiresAt.Valid && url.ExpiresAt.Time.Before(time.Now()) {
-		return "", apperrors.ErrURLExpired
+		return "", apperrors.ExpiredError("this URL has expired")
 	}
 
-	// Populate cache after a successful DB lookup.
-	// Cache failures should not break a successful redirect.
+	// Successful DB lookup: populate cache.
 	if err := s.cacheStore.Set(ctx, shortCode, url.LongUrl, cacheTTL); err != nil {
 		log.Printf("failed to cache URL for short code %s: %v", shortCode, err)
 	}
@@ -112,20 +124,29 @@ func (s *Service) GetLongURL(ctx context.Context, shortCode string) (string, err
 
 }
 
-func (s *Service) CreateUser(ctx context.Context, email string) (db.User, string, error) {
+func (s *Service) CreateUser(
+	ctx context.Context,
+	email string,
+) (db.User, string, error) {
 	normalizedEmail, err := utils.NormalizeEmail(email)
 	if err != nil {
-		return db.User{}, "", apperrors.ErrInvalidEmail
+		return db.User{}, "", apperrors.ValidationError("invalid email address")
 	}
 
 	id, err := s.idGen.NextID()
 	if err != nil {
-		return db.User{}, "", apperrors.ErrInternal
+		log.Printf("failed to generate user ID: %v", err)
+		return db.User{}, "", apperrors.InternalServerError(
+			"something went wrong, please try again",
+		)
 	}
 
 	apiKey, err := utils.GenerateAPIKey()
 	if err != nil {
-		return db.User{}, "", apperrors.ErrInternal
+		log.Printf("failed to generate API key: %v", err)
+		return db.User{}, "", apperrors.InternalServerError(
+			"something went wrong, please try again",
+		)
 	}
 
 	hashedAPIKey := utils.HashAPIKey(apiKey)
@@ -136,22 +157,30 @@ func (s *Service) CreateUser(ctx context.Context, email string) (db.User, string
 		ApiKeyHash: hashedAPIKey,
 	})
 	if err != nil {
-		return db.User{}, "", apperrors.ErrInternal
+		log.Printf("failed to create user: %v", err)
+		return db.User{}, "", apperrors.InternalServerError(
+			"something went wrong, please try again",
+		)
 	}
 
 	return user, apiKey, nil
 
 }
 
-func (s *Service) GetUserByAPIKeyHash(ctx context.Context, apiKeyHash string) (db.User, error) {
+func (s *Service) GetUserByAPIKeyHash(
+	ctx context.Context,
+	apiKeyHash string,
+) (db.User, error) {
 	if apiKeyHash == "" {
-		return db.User{}, apperrors.ErrInternal
+		return db.User{}, apperrors.UnauthorizedError("invalid API key")
 	}
 
 	user, err := s.store.GetUserByAPIKeyHash(ctx, apiKeyHash)
 	if err != nil {
-		return db.User{}, apperrors.ErrInternal
+		log.Printf("failed to find user by API key hash: %v", err)
+		return db.User{}, apperrors.UnauthorizedError("invalid API key")
 	}
 
 	return user, nil
+
 }

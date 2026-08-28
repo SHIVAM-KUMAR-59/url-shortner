@@ -1,10 +1,9 @@
 package idgen
 
 import (
+	"errors"
 	"sync"
 	"time"
-
-	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/apperrors"
 )
 
 const (
@@ -27,12 +26,13 @@ type Generator struct {
 
 func NewGenerator(nodeID int64) (*Generator, error) {
 	if nodeID < 0 || nodeID > maxNodeID {
-		return nil, apperrors.ErrInvalidNodeID
+		return nil, errors.New("idgen: node ID out of range")
 	}
 
 	return &Generator{
 		nodeID: nodeID,
 	}, nil
+
 }
 
 func (g *Generator) NextID() (uint64, error) {
@@ -43,7 +43,7 @@ func (g *Generator) NextID() (uint64, error) {
 
 	// Clock has moved backwards.
 	if now < g.lastTimestamp {
-		return 0, apperrors.ErrClockMovedBackwards
+		return 0, errors.New("idgen: system clock moved backwards")
 	}
 
 	// Same millisecond: increment sequence.
@@ -73,4 +73,5 @@ func (g *Generator) NextID() (uint64, error) {
 		uint64(g.sequence)
 
 	return id, nil
+
 }

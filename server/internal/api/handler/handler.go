@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/api/service"
@@ -31,42 +30,34 @@ func (h *Handler) HandleShorten(w http.ResponseWriter, r *http.Request) {
 	var req shortenRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeError(w, apperrors.ValidationError("invalid request body"))
 		return
 	}
 
 	var userID *int64
+
 	if v := r.Context().Value(userIDContextKey); v != nil {
-		id := v.(int64)
-		userID = &id
+		if id, ok := v.(int64); ok {
+			userID = &id
+		}
 	}
 
-	shortCode, err := h.service.CreateShortURL(r.Context(), req.LongURL, userID)
+	shortCode, err := h.service.CreateShortURL(
+		r.Context(),
+		req.LongURL,
+		userID,
+	)
 	if err != nil {
-		statusCode := apperrors.GetStatusCode(err)
-
-		message := "internal server error"
-
-		switch {
-		case errors.Is(err, apperrors.ErrInvalidLongURL):
-			message = "invalid or missing long url"
-
-		case errors.Is(err, apperrors.ErrInternal):
-			message = "internal server error"
-		}
-
-		http.Error(w, message, statusCode)
+		writeError(w, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
-	if err := json.NewEncoder(w).Encode(shortenResponse{
+	_ = json.NewEncoder(w).Encode(shortenResponse{
 		ShortCode: shortCode,
-	}); err != nil {
-		return
-	}
+	})
 
 }
 
@@ -75,11 +66,7 @@ func (h *Handler) HandleRedirect(w http.ResponseWriter, r *http.Request) {
 
 	longURL, err := h.service.GetLongURL(r.Context(), shortCode)
 	if err != nil {
-		http.Error(
-			w,
-			"not found",
-			apperrors.GetStatusCode(err),
-		)
+		writeError(w, err)
 		return
 	}
 
@@ -101,18 +88,13 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req createUserRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeError(w, apperrors.ValidationError("invalid request body"))
 		return
 	}
 
 	user, apiKey, err := h.service.CreateUser(r.Context(), req.Email)
 	if err != nil {
-		switch {
-		case errors.Is(err, apperrors.ErrInvalidEmail):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		default:
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-		}
+		writeError(w, err)
 		return
 	}
 
@@ -125,9 +107,6 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	_ = json.NewEncoder(w).Encode(response)
 
 }
