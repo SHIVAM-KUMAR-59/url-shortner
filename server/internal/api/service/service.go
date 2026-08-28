@@ -38,13 +38,25 @@ func NewService(
 	}
 }
 
-func (s *Service) CreateShortURL(
-	ctx context.Context,
-	longURL string,
-	userID *int64,
-) (string, error) {
+func (s *Service) CreateShortURL(ctx context.Context, longURL string, userID *int64) (string, error) {
 	if longURL == "" {
 		return "", apperrors.ValidationError("invalid URL provided")
+	}
+
+	hashBytes := sha256.Sum256([]byte(longURL))
+	longURLHash := hex.EncodeToString(hashBytes[:])
+
+	// Idempotent dedup: only applies to authenticated users.
+	// If this user already shortened this exact URL, return the
+	// existing short_code instead of attempting a new insert.
+	if userID != nil {
+		existing, err := s.store.GetURLByUserAndHash(ctx, db.GetURLByUserAndHashParams{
+			UserID:      pgtype.Int8{Int64: *userID, Valid: true},
+			LongUrlHash: longURLHash,
+		})
+		if err == nil {
+			return existing.ShortCode, nil
+		}
 	}
 
 	id, err := s.idGen.NextID()
@@ -54,9 +66,6 @@ func (s *Service) CreateShortURL(
 	}
 
 	shortCode := base62.Encode(id)
-
-	hashBytes := sha256.Sum256([]byte(longURL))
-	longURLHash := hex.EncodeToString(hashBytes[:])
 
 	_, err = s.store.CreateURL(ctx, db.CreateURLParams{
 		ID:            int64(id),
@@ -77,7 +86,6 @@ func (s *Service) CreateShortURL(
 	}
 
 	return shortCode, nil
-
 }
 
 func (s *Service) GetLongURL(

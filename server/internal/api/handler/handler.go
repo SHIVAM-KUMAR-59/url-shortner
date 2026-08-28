@@ -6,15 +6,18 @@ import (
 
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/api/service"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/apperrors"
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/ratelimit"
 )
 
 type Handler struct {
 	service *service.Service
+	limiter ratelimit.Limiter
 }
 
-func NewHandler(service *service.Service) *Handler {
+func NewHandler(service *service.Service, limiter ratelimit.Limiter) *Handler {
 	return &Handler{
 		service: service,
+		limiter: limiter,
 	}
 }
 

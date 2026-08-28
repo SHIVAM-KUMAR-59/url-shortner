@@ -13,6 +13,7 @@ import (
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/cache"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/config"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/idgen"
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/ratelimit"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage"
 )
 
@@ -51,6 +52,7 @@ func main() {
 	}
 
 	cacheStore := cache.NewRedisCache(redisClient)
+	redisLimiter := ratelimit.NewRedisLimiter(redisClient)
 
 	// ID Generator
 	idGen, err := idgen.NewGenerator(cfg.NodeID)
@@ -62,12 +64,18 @@ func main() {
 	svc := service.NewService(store, cacheStore, idGen)
 
 	// HTTP Handler
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, redisLimiter)
 
 	// Routes
 	mux := http.NewServeMux()
 
-	mux.Handle("POST /api/v1/shorten", h.AuthMiddleware(http.HandlerFunc(h.HandleShorten)))
+	mux.Handle("POST /api/v1/shorten",
+		h.AuthMiddleware(
+			h.RateLimitMiddleware(
+				http.HandlerFunc(h.HandleShorten),
+			),
+		),
+	)
 	mux.HandleFunc("GET /{short_code}", h.HandleRedirect)
 
 	mux.HandleFunc("POST /api/v1/users", h.HandleCreateUser)
