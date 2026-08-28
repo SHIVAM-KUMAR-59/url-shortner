@@ -4,23 +4,29 @@ import (
 	"errors"
 	"os"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	DatabaseURL string
-	PORT        string
+	ServerPort  string
 	NodeID      int64
 }
 
 func Load() (*Config, error) {
+	if err := godotenv.Load(); err != nil {
+		return nil, errors.New("failed to load .env file")
+	}
+
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		return nil, errors.New("DATABASE_URL is required")
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	serverPort := os.Getenv("PORT")
+	if serverPort == "" {
+		serverPort = "8080"
 	}
 
 	nodeIDStr := os.Getenv("NODE_ID")
@@ -35,7 +41,8 @@ func Load() (*Config, error) {
 
 	return &Config{
 		DatabaseURL: databaseURL,
-		PORT:        port,
+		ServerPort:  serverPort,
 		NodeID:      nodeID,
 	}, nil
+
 }
