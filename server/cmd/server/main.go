@@ -7,8 +7,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/api/handler"
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/api/service"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/config"
-	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/handler"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/idgen"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage"
 )
@@ -39,7 +40,8 @@ func main() {
 		return
 	}
 
-	h := handler.NewHandler(store, idGen)
+	service := service.NewService(store, idGen)
+	h := handler.NewHandler(service)
 
 	mux := http.NewServeMux()
 
