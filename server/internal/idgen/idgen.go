@@ -1,6 +1,7 @@
 package idgen
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
@@ -10,10 +11,14 @@ const (
 	nodeIDBits   uint8 = 10
 	sequenceBits uint8 = 12
 
+	maxNodeID   int64 = -1 ^ (-1 << nodeIDBits)
 	maxSequence int64 = -1 ^ (-1 << sequenceBits)
 	nodeIDShift uint8 = sequenceBits
 	timeShift   uint8 = sequenceBits + nodeIDBits
 )
+
+var ErrClockMovedBackwards = errors.New("idgen: system clock moved backwards")
+var ErrInvalidNodeID = errors.New("idgen: node id out of range")
 
 type Generator struct {
 	mu            sync.Mutex
@@ -22,13 +27,17 @@ type Generator struct {
 	sequence      int64
 }
 
-func NewGenerator(nodeID int64) *Generator {
+func NewGenerator(nodeID int64) (*Generator, error) {
+	if nodeID < 0 || nodeID > maxNodeID {
+		return nil, ErrInvalidNodeID
+	}
+
 	return &Generator{
 		nodeID: nodeID,
-	}
+	}, nil
 }
 
-func (g *Generator) NextID() uint64 {
+func (g *Generator) NextID() (uint64, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -36,7 +45,7 @@ func (g *Generator) NextID() uint64 {
 
 	// Clock has moved backwards.
 	if now < g.lastTimestamp {
-		panic("system clock moved backwards")
+		return 0, ErrClockMovedBackwards
 	}
 
 	// Same millisecond: increment sequence.
@@ -65,5 +74,5 @@ func (g *Generator) NextID() uint64 {
 		(uint64(g.nodeID) << nodeIDShift) |
 		uint64(g.sequence)
 
-	return id
+	return id, nil
 }
