@@ -13,6 +13,7 @@ var (
 	ErrInternal            = errors.New("internal server error")
 	ErrClockMovedBackwards = errors.New("idgen: system clock moved backwards")
 	ErrInvalidNodeID       = errors.New("idgen: node id out of range")
+	ErrCacheMiss           = errors.New("cache miss") // Don't add this to GetStatusCode as client will never see this
 )
 
 func GetStatusCode(err error) int {

@@ -12,6 +12,7 @@ type Config struct {
 	DatabaseURL string
 	ServerPort  string
 	NodeID      int64
+	RedisURL    string
 }
 
 func Load() (*Config, error) {
@@ -39,10 +40,16 @@ func Load() (*Config, error) {
 		return nil, errors.New("NODE_ID must be a valid integer")
 	}
 
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "redis://localhost:6379"
+	}
+
 	return &Config{
 		DatabaseURL: databaseURL,
 		ServerPort:  serverPort,
 		NodeID:      nodeID,
+		RedisURL:    redisURL,
 	}, nil
 
 }

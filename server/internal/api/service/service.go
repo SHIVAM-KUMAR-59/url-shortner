@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"log"
 	"time"
 
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/apperrors"
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/cache"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/idgen"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage/db"
@@ -14,15 +17,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cacheTTL = time.Hour
+
 type Service struct {
-	store storage.URLStore
-	idGen *idgen.Generator
+	store      storage.URLStore
+	cacheStore cache.Cache
+	idGen      *idgen.Generator
 }
 
-func NewService(store storage.URLStore, idGen *idgen.Generator) *Service {
+func NewService(
+	store storage.URLStore,
+	cacheStore cache.Cache,
+	idGen *idgen.Generator,
+) *Service {
 	return &Service{
-		store: store,
-		idGen: idGen,
+		store:      store,
+		cacheStore: cacheStore,
+		idGen:      idGen,
 	}
 }
 
@@ -57,6 +68,10 @@ func (s *Service) CreateShortURL(
 		return "", apperrors.ErrInternal
 	}
 
+	if err := s.cacheStore.Set(ctx, shortCode, longURL, cacheTTL); err != nil {
+		log.Printf("failed to cache URL for short code %s: %v", shortCode, err)
+	}
+
 	return shortCode, nil
 
 }
@@ -69,6 +84,20 @@ func (s *Service) GetLongURL(
 		return "", apperrors.ErrURLNotFound
 	}
 
+	// Fast path: return immediately on cache hit.
+	longURL, err := s.cacheStore.Get(ctx, shortCode)
+	if err == nil {
+		return longURL, nil
+	}
+
+	// Graceful degradation:
+	// - Cache miss: fall through to DB.
+	// - Redis/cache failure: also fall through to DB.
+	if err != nil && !errors.Is(err, apperrors.ErrCacheMiss) {
+		log.Printf("cache get failed for short code %s: %v", shortCode, err)
+	}
+
+	// Cache miss or cache failure: fetch from the database.
 	url, err := s.store.GetURLByShortCode(ctx, shortCode)
 	if err != nil {
 		return "", apperrors.ErrURLNotFound
@@ -80,6 +109,12 @@ func (s *Service) GetLongURL(
 
 	if url.ExpiresAt.Valid && url.ExpiresAt.Time.Before(time.Now()) {
 		return "", apperrors.ErrURLExpired
+	}
+
+	// Populate cache after a successful DB lookup.
+	// Cache failures should not break a successful redirect.
+	if err := s.cacheStore.Set(ctx, shortCode, url.LongUrl, cacheTTL); err != nil {
+		log.Printf("failed to cache URL for short code %s: %v", shortCode, err)
 	}
 
 	return url.LongUrl, nil
