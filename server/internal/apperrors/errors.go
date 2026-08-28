@@ -6,11 +6,13 @@ import (
 )
 
 var (
-	ErrURLNotFound    = errors.New("url not found")
-	ErrURLExpired     = errors.New("url has expired")
-	ErrURLInactive    = errors.New("url is inactive")
-	ErrInvalidLongURL = errors.New("invalid or missing long url")
-	ErrInternal       = errors.New("internal server error")
+	ErrURLNotFound         = errors.New("url not found")
+	ErrURLExpired          = errors.New("url has expired")
+	ErrURLInactive         = errors.New("url is inactive")
+	ErrInvalidLongURL      = errors.New("invalid or missing long url")
+	ErrInternal            = errors.New("internal server error")
+	ErrClockMovedBackwards = errors.New("idgen: system clock moved backwards")
+	ErrInvalidNodeID       = errors.New("idgen: node id out of range")
 )
 
 func GetStatusCode(err error) int {
@@ -26,6 +28,12 @@ func GetStatusCode(err error) int {
 
 	case errors.Is(err, ErrInvalidLongURL):
 		return http.StatusBadRequest
+
+	case errors.Is(err, ErrInvalidNodeID):
+		return http.StatusInternalServerError
+
+	case errors.Is(err, ErrInternal):
+		return http.StatusInternalServerError
 
 	default:
 		return http.StatusInternalServerError

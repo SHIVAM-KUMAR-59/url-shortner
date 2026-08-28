@@ -1,9 +1,10 @@
 package idgen
 
 import (
-	"errors"
 	"sync"
 	"time"
+
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/apperrors"
 )
 
 const (
@@ -17,9 +18,6 @@ const (
 	timeShift   uint8 = sequenceBits + nodeIDBits
 )
 
-var ErrClockMovedBackwards = errors.New("idgen: system clock moved backwards")
-var ErrInvalidNodeID = errors.New("idgen: node id out of range")
-
 type Generator struct {
 	mu            sync.Mutex
 	nodeID        int64
@@ -29,7 +27,7 @@ type Generator struct {
 
 func NewGenerator(nodeID int64) (*Generator, error) {
 	if nodeID < 0 || nodeID > maxNodeID {
-		return nil, ErrInvalidNodeID
+		return nil, apperrors.ErrInvalidNodeID
 	}
 
 	return &Generator{
@@ -45,7 +43,7 @@ func (g *Generator) NextID() (uint64, error) {
 
 	// Clock has moved backwards.
 	if now < g.lastTimestamp {
-		return 0, ErrClockMovedBackwards
+		return 0, apperrors.ErrClockMovedBackwards
 	}
 
 	// Same millisecond: increment sequence.
