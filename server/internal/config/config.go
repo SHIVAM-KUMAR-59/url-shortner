@@ -3,16 +3,15 @@ package config
 import (
 	"errors"
 	"os"
-	"strconv"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	DatabaseURL string
-	ServerPort  string
-	NodeID      int64
-	RedisURL    string
+	DatabaseURL   string
+	ServerPort    string
+	RedisURL      string
+	EtcdEndpoints string
 }
 
 func Load() (*Config, error) {
@@ -30,26 +29,21 @@ func Load() (*Config, error) {
 		serverPort = "8080"
 	}
 
-	nodeIDStr := os.Getenv("NODE_ID")
-	if nodeIDStr == "" {
-		nodeIDStr = "1"
-	}
-
-	nodeID, err := strconv.ParseInt(nodeIDStr, 10, 64)
-	if err != nil {
-		return nil, errors.New("NODE_ID must be a valid integer")
-	}
-
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
 		redisURL = "redis://localhost:6379"
 	}
 
+	etcdEndpoints := os.Getenv("ETCD_ENDPOINTS")
+	if etcdEndpoints == "" {
+		etcdEndpoints = "http://localhost:2379"
+	}
+
 	return &Config{
-		DatabaseURL: databaseURL,
-		ServerPort:  serverPort,
-		NodeID:      nodeID,
-		RedisURL:    redisURL,
+		DatabaseURL:   databaseURL,
+		ServerPort:    serverPort,
+		RedisURL:      redisURL,
+		EtcdEndpoints: etcdEndpoints,
 	}, nil
 
 }

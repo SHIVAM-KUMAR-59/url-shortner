@@ -13,6 +13,7 @@ import (
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/cache"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/config"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/idgen"
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/nodelease"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/ratelimit"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage"
 )
@@ -54,8 +55,25 @@ func main() {
 	cacheStore := cache.NewRedisCache(redisClient)
 	redisLimiter := ratelimit.NewRedisLimiter(redisClient)
 
+	leaser, err := nodelease.NewLeaser([]string{cfg.EtcdEndpoints})
+	if err != nil {
+		log.Fatal("failed to initialize node in etcd: , err")
+	}
+
+	nodeID, err := leaser.AcquireNodeID(ctx, idgen.MaxNodeID)
+	if err != nil {
+		log.Fatal("failed to acquire nodeID: ", err)
+	}
+
+	log.Printf("acquired node ID: %d", nodeID)
+
+	err = leaser.KeepAlive(ctx)
+	if err != nil {
+		log.Fatal("failed to keep etcd alive: ", err)
+	}
+
 	// ID Generator
-	idGen, err := idgen.NewGenerator(cfg.NodeID)
+	idGen, err := idgen.NewGenerator(nodeID)
 	if err != nil {
 		log.Fatal("failed to create ID generator: ", err)
 	}

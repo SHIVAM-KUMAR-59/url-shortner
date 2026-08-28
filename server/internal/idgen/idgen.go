@@ -11,7 +11,7 @@ const (
 	nodeIDBits   uint8 = 10
 	sequenceBits uint8 = 12
 
-	maxNodeID   int64 = -1 ^ (-1 << nodeIDBits)
+	MaxNodeID   int64 = -1 ^ (-1 << nodeIDBits)
 	maxSequence int64 = -1 ^ (-1 << sequenceBits)
 	nodeIDShift uint8 = sequenceBits
 	timeShift   uint8 = sequenceBits + nodeIDBits
@@ -25,7 +25,7 @@ type Generator struct {
 }
 
 func NewGenerator(nodeID int64) (*Generator, error) {
-	if nodeID < 0 || nodeID > maxNodeID {
+	if nodeID < 0 || nodeID > MaxNodeID {
 		return nil, errors.New("idgen: node ID out of range")
 	}
 
