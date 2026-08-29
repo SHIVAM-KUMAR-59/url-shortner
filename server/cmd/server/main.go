@@ -12,6 +12,7 @@ import (
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/api/service"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/cache"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/config"
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/events"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/idgen"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/nodelease"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/ratelimit"
@@ -78,8 +79,15 @@ func main() {
 		log.Fatal("failed to create ID generator: ", err)
 	}
 
+	kafkaProducer := events.NewKafkaPublisher(
+		cfg.KafkaBrokers,
+		"url-events",
+	)
+
+	defer kafkaProducer.Close()
+
 	// Application Service
-	svc := service.NewService(store, cacheStore, idGen)
+	svc := service.NewService(store, cacheStore, idGen, kafkaProducer)
 
 	// HTTP Handler
 	h := handler.NewHandler(svc, redisLimiter)

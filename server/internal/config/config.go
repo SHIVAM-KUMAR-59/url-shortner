@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -13,6 +14,7 @@ type Config struct {
 	ServerPort    string
 	RedisURL      string
 	EtcdEndpoints string
+	KafkaBrokers  []string
 }
 
 func Load() (*Config, error) {
@@ -40,10 +42,19 @@ func Load() (*Config, error) {
 		etcdEndpoints = "etcd:2379"
 	}
 
+	var kafkaBrokers []string
+	kafkaEnvBrokers := os.Getenv("KAFKA_BROKERS")
+	if kafkaEnvBrokers == "" {
+		kafkaBrokers = []string{"kafka:9092"}
+	} else {
+		kafkaBrokers = strings.Split(kafkaEnvBrokers, ",")
+	}
+
 	return &Config{
 		DatabaseURL:   databaseURL,
 		ServerPort:    serverPort,
 		RedisURL:      redisURL,
 		EtcdEndpoints: etcdEndpoints,
+		KafkaBrokers:  kafkaBrokers,
 	}, nil
 }

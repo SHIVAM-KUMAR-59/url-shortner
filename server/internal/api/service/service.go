@@ -10,6 +10,7 @@ import (
 
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/apperrors"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/cache"
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/events"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/idgen"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/storage/db"
@@ -24,17 +25,20 @@ type Service struct {
 	store      storage.Store
 	cacheStore cache.Cache
 	idGen      *idgen.Generator
+	publisher  events.Publisher
 }
 
 func NewService(
 	store storage.Store,
 	cacheStore cache.Cache,
 	idGen *idgen.Generator,
+	publisher events.Publisher,
 ) *Service {
 	return &Service{
 		store:      store,
 		cacheStore: cacheStore,
 		idGen:      idGen,
+		publisher:  publisher,
 	}
 }
 
@@ -99,6 +103,16 @@ func (s *Service) GetLongURL(
 	// Fast path: return immediately on cache hit.
 	longURL, err := s.cacheStore.Get(ctx, shortCode)
 	if err == nil {
+		// Add to kafka
+		go func() {
+			publishCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := s.publisher.PublishClickEvent(publishCtx, shortCode); err != nil {
+				log.Printf("failed to publish click event for %s: %v", shortCode, err)
+			}
+		}()
+
 		return longURL, nil
 	}
 
@@ -127,6 +141,16 @@ func (s *Service) GetLongURL(
 	if err := s.cacheStore.Set(ctx, shortCode, url.LongUrl, cacheTTL); err != nil {
 		log.Printf("failed to cache URL for short code %s: %v", shortCode, err)
 	}
+
+	// Add to kafka
+	go func() {
+		publishCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := s.publisher.PublishClickEvent(publishCtx, shortCode); err != nil {
+			log.Printf("failed to publish click event for %s: %v", shortCode, err)
+		}
+	}()
 
 	return url.LongUrl, nil
 
