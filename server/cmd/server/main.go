@@ -81,7 +81,7 @@ func main() {
 
 	kafkaProducer := events.NewKafkaPublisher(
 		cfg.KafkaBrokers,
-		"url-events",
+		cfg.KafkaTopic,
 	)
 
 	defer kafkaProducer.Close()
