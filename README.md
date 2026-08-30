@@ -73,23 +73,41 @@ layered on top.
 flowchart TD
     Client([Client / Browser])
 
-    Client -->|GET /short_code| Edge[CDN / Edge Compute — planned]
+    Client -->|GET /short_code| Edge[CDN / Edge Compute]
     Client -->|Dashboard traffic| FE[Next.js Frontend]
 
-    Edge -->|cache miss| LB[Load Balancer / Gateway — planned]
-    FE -->|API calls| Backend
+    Edge -->|cache miss| LB[Load Balancer / API Gateway<br/>Envoy or Nginx]
+    FE -->|POST /api/v1/shorten etc.| LB
 
-    LB --> Backend[Go Backend]
+    LB --> App1[Go Backend Instance 1]
+    LB --> App2[Go Backend Instance 2]
+    LB --> App3[Go Backend Instance N]
 
-    Backend --> Cache[(Redis Cache)]
-    Backend --> DB[(Postgres)]
-    Cache -->|cache miss| DB
+    App1 --> Cache[(Redis Cache)]
+    App2 --> Cache
+    App3 --> Cache
 
-    Backend -.async fire-and-forget.-> Kafka[[Kafka]]
-    Kafka --> Consumer[Kafka Consumer]
-    Consumer -->|batched inserts| ClickHouse[(ClickHouse)]
+    Cache -->|cache miss| DB[(Postgres / ScyllaDB<br/>sharded, replicated)]
 
-    Etcd[[etcd]] -.assigns node ID at boot.-> Backend
+    App1 -.fire and forget.-> Queue[[Kafka]]
+    App2 -.fire and forget.-> Queue
+    App3 -.fire and forget.-> Queue
+
+    Queue --> Analytics[(ClickHouse<br/>analytics store)]
+
+    Etcd[[etcd<br/>node ID leases]] -.assigns node ID at boot.-> App1
+    Etcd -.-> App2
+    Etcd -.-> App3
+
+    subgraph Observability
+      Prom[Prometheus]
+      Graf[Grafana]
+    end
+
+    App1 -.metrics.-> Prom
+    App2 -.metrics.-> Prom
+    App3 -.metrics.-> Prom
+    Prom --> Graf
 ```
 
 ### Request Paths
