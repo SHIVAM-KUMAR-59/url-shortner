@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"log"
+	"net/http"
 	"time"
 
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/analytics"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/apperrors"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/cache"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/events"
@@ -22,10 +24,11 @@ import (
 const cacheTTL = time.Hour
 
 type Service struct {
-	store      storage.Store
-	cacheStore cache.Cache
-	idGen      *idgen.Generator
-	publisher  events.Publisher
+	store           storage.Store
+	cacheStore      cache.Cache
+	idGen           *idgen.Generator
+	publisher       events.Publisher
+	analyticsReader *analytics.ClickHouseReader
 }
 
 func NewService(
@@ -33,12 +36,14 @@ func NewService(
 	cacheStore cache.Cache,
 	idGen *idgen.Generator,
 	publisher events.Publisher,
+	analyticsReader *analytics.ClickHouseReader,
 ) *Service {
 	return &Service{
-		store:      store,
-		cacheStore: cacheStore,
-		idGen:      idGen,
-		publisher:  publisher,
+		store:           store,
+		cacheStore:      cacheStore,
+		idGen:           idGen,
+		publisher:       publisher,
+		analyticsReader: analyticsReader,
 	}
 }
 
@@ -95,6 +100,7 @@ func (s *Service) CreateShortURL(ctx context.Context, longURL string, userID *in
 func (s *Service) GetLongURL(
 	ctx context.Context,
 	shortCode string,
+	clickEvent events.ClickEvent,
 ) (string, error) {
 	if shortCode == "" {
 		return "", apperrors.BadRequestError("invalid code entered")
@@ -108,7 +114,11 @@ func (s *Service) GetLongURL(
 			publishCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			if err := s.publisher.PublishClickEvent(publishCtx, shortCode); err != nil {
+			clickEvent.ShortCode = shortCode
+			clickEvent.ClickedAt = time.Now()
+			clickEvent.StatusCode = http.StatusFound
+
+			if err := s.publisher.PublishClickEvent(publishCtx, clickEvent); err != nil {
 				log.Printf("failed to publish click event for %s: %v", shortCode, err)
 			}
 		}()
@@ -147,7 +157,11 @@ func (s *Service) GetLongURL(
 		publishCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		if err := s.publisher.PublishClickEvent(publishCtx, shortCode); err != nil {
+		clickEvent.ShortCode = shortCode
+		clickEvent.ClickedAt = time.Now()
+		clickEvent.StatusCode = http.StatusFound
+
+		if err := s.publisher.PublishClickEvent(publishCtx, clickEvent); err != nil {
 			log.Printf("failed to publish click event for %s: %v", shortCode, err)
 		}
 	}()
@@ -215,4 +229,40 @@ func (s *Service) GetUserByAPIKeyHash(
 
 	return user, nil
 
+}
+
+type StatsResult struct {
+	ShortCode   string
+	LongURL     string
+	CreatedAt   time.Time
+	TotalClicks int64
+	LastClicked *time.Time
+}
+
+func (s *Service) GetURLStats(ctx context.Context, shortCode string, userID int64) (StatsResult, error) {
+	url, err := s.store.GetURLByShortCode(ctx, shortCode)
+
+	if err != nil {
+		return StatsResult{}, apperrors.NotFoundError("url", shortCode)
+	}
+
+	if !url.UserID.Valid || url.UserID.Int64 != userID {
+		return StatsResult{}, apperrors.NotFoundError("url", shortCode)
+	}
+
+	totalClicks, lastClicked, err := s.analyticsReader.GetStats(ctx, shortCode)
+	if err != nil {
+		return StatsResult{}, apperrors.InternalServerError("Something went wrong, please try again.")
+	}
+
+	var result StatsResult
+	result = StatsResult{
+		ShortCode:   shortCode,
+		LongURL:     url.LongUrl,
+		CreatedAt:   url.CreatedAt.Time,
+		TotalClicks: totalClicks,
+		LastClicked: lastClicked,
+	}
+
+	return result, nil
 }

@@ -5,9 +5,11 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/analytics"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/api/handler"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/api/service"
 	"github.com/SHIVAM-KUMAR-59/url-shortener/internal/cache"
@@ -86,8 +88,23 @@ func main() {
 
 	defer kafkaProducer.Close()
 
+	clickHouseConn, err := clickhouse.Open(&clickhouse.Options{
+		Addr: []string{cfg.ClickHouseAddr},
+		Auth: clickhouse.Auth{
+			Database: "default",
+			Username: cfg.ClickHouseUser,
+			Password: cfg.ClickHousePassword,
+		},
+	})
+
+	if err != nil {
+		log.Fatal("failed to connect with clickhouse: ", err)
+	}
+
+	analyticsReader := analytics.NewClickHouseReader(clickHouseConn)
+
 	// Application Service
-	svc := service.NewService(store, cacheStore, idGen, kafkaProducer)
+	svc := service.NewService(store, cacheStore, idGen, kafkaProducer, analyticsReader)
 
 	// HTTP Handler
 	h := handler.NewHandler(svc, redisLimiter)
@@ -105,6 +122,8 @@ func main() {
 	mux.HandleFunc("GET /{short_code}", h.HandleRedirect)
 
 	mux.HandleFunc("POST /api/v1/users", h.HandleCreateUser)
+
+	mux.Handle("GET /api/v1/{short_code}/stats", h.AuthMiddleware(http.HandlerFunc(h.HandleGetStats)))
 
 	addr := ":" + cfg.ServerPort
 	log.Println("starting server on port", cfg.ServerPort)

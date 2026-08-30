@@ -1,12 +1,36 @@
 FROM golang:1.26-alpine AS build
+
 WORKDIR /app
+
 COPY go.mod go.sum ./
+
 RUN go mod download
+
 COPY . .
+
+# Build consumer
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/consumer ./cmd/consumer
 
+# Build goose
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest && \
+    cp "$(go env GOPATH)/bin/goose" /out/goose
+
+
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates
+
+RUN apk add --no-cache ca-certificates bash
+
 WORKDIR /app
+
 COPY --from=build /out/consumer ./consumer
-ENTRYPOINT ["./consumer"]
+COPY --from=build /out/goose ./goose
+
+# ClickHouse migrations
+COPY migrations/clickhouse_migrations ./migrations/clickhouse_migrations
+
+# Consumer entrypoint
+COPY scripts/entrypoint_consumer.sh ./entrypoint.sh
+
+RUN chmod +x ./entrypoint.sh ./goose ./consumer
+
+ENTRYPOINT ["./entrypoint.sh"]

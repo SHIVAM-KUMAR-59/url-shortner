@@ -3,7 +3,6 @@ package events
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -24,11 +23,7 @@ func NewKafkaPublisher(brokers []string, topic string) *KafkaPublisher {
 	}
 }
 
-func (p *KafkaPublisher) PublishClickEvent(ctx context.Context, shortCode string) error {
-	event := ClickEvent{
-		ShortCode: shortCode,
-		ClickedAt: time.Now(),
-	}
+func (p *KafkaPublisher) PublishClickEvent(ctx context.Context, event ClickEvent) error {
 
 	payload, err := json.Marshal(event)
 	if err != nil {
@@ -36,7 +31,7 @@ func (p *KafkaPublisher) PublishClickEvent(ctx context.Context, shortCode string
 	}
 
 	msg := kafka.Message{
-		Key:   []byte(shortCode),
+		Key:   []byte(event.ShortCode),
 		Value: payload,
 	}
 

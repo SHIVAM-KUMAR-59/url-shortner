@@ -65,6 +65,8 @@ func main() {
 				continue
 			}
 
+			log.Printf("received event: %+v", event)
+
 			msgChan <- event
 		}
 	}()
