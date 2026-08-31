@@ -30,10 +30,19 @@ func main() {
 	ctx := context.Background()
 
 	// PostgreSQL
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal("failed to parse database config: ", err)
+	}
+
+	poolConfig.MaxConns = 50 // tune based on testing
+	log.Printf("database pool configured with max %d connections", poolConfig.MaxConns)
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		log.Fatal("failed to create database pool: ", err)
 	}
+
 	defer pool.Close()
 
 	if err := pool.Ping(ctx); err != nil {
