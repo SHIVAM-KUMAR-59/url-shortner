@@ -1,6 +1,6 @@
 # url-shortener
 
-A production-grade, high-throughput URL shortener — built incrementally,
+A production-grade, high-throughput URL shortener, built incrementally,
 phase by phase, with an emphasis on the design decisions and trade-offs
 behind each layer, not just a working demo.
 
@@ -29,7 +29,7 @@ behind each layer, not just a working demo.
 
 ## Overview
 
-This is not a beginner-scale URL shortener — it's built to handle large
+This is not a beginner-scale URL shortener, it's built to handle large
 data volumes, high throughput, and horizontal scaling, with every major
 design decision made deliberately: caching strategy, ID generation,
 storage sharding readiness, coordination for multi-instance deployment,
@@ -63,7 +63,7 @@ layered on top.
 | Migrations | goose (Postgres and ClickHouse dialects) |
 | DB access | sqlc (typed queries generated from hand-written SQL) |
 | Containerization | Docker + Docker Compose |
-| Frontend | Next.js (dashboard only — never touches the redirect hot path) |
+| Frontend | Next.js (dashboard only, never touches the redirect hot path) |
 
 ## Architecture
 
@@ -112,12 +112,12 @@ flowchart TD
 
 ### Request Paths
 
-**Redirect path** — `GET /{short_code}` (the hot path):
+**Redirect path**: `GET /{short_code}` (the hot path):
 Backend → Redis cache-aside → Postgres only on a cold miss → `302`
 redirect → click event fired asynchronously to Kafka (never blocks the
 response).
 
-**Write path** — `POST /api/v1/shorten`:
+**Write path**: `POST /api/v1/shorten`:
 Auth middleware (optional) → rate-limit middleware → idempotent dedup
 check for authenticated users → Snowflake ID generation → Base62 encode
 → Postgres insert → cache write-through.
@@ -129,21 +129,21 @@ bulk insert into ClickHouse.
 
 ### Component Responsibilities
 
-- **Go backend (stateless)** — owns Snowflake ID generation, Base62
+- **Go backend (stateless)**: owns Snowflake ID generation, Base62
   encoding, request handling, auth, and rate limiting. Any instance can
   serve any request.
-- **Redis** — cache-aside for `short_code -> long_url`; also backs the
+- **Redis** : cache-aside for `short_code -> long_url`; also backs the
   fixed-window rate limiter (separate keyspace/interface from the URL
   cache).
-- **Postgres** — source of truth for URLs and users, accessed through a
+- **Postgres**: source of truth for URLs and users, accessed through a
   `storage.Store` interface (composed of `URLStore` + `UserStore`) so the
   underlying database can be swapped without touching business logic.
-- **etcd** — leases a unique node ID to each app instance at boot via an
+- **etcd**: leases a unique node ID to each app instance at boot via an
   atomic compare-and-put transaction, with a renewable lease so a crashed
   instance's ID is automatically freed after its TTL expires.
-- **Kafka** — receives click events fully asynchronously; a producer
+- **Kafka**: receives click events fully asynchronously; a producer
   failure never fails a redirect.
-- **ClickHouse** — append-optimized analytics store (`MergeTree` engine),
+- **ClickHouse**: append-optimized analytics store (`MergeTree` engine),
   fed via batched inserts from a dedicated consumer process.
 
 ## Repository Structure
@@ -182,17 +182,17 @@ url-shortener/
 
 ## Product Decisions
 
-- **Custom aliases** — supported for authenticated users.
-- **Auth** — API-key-gated, with an anonymous low-volume tier. No
+- **Custom aliases**: supported for authenticated users.
+- **Auth**: API-key-gated, with an anonymous low-volume tier. No
   payment integration; only two tiers exist (anonymous vs registered),
   no paid plan.
-- **Expiry** — opt-in; links persist indefinitely unless an expiry is
+- **Expiry**: opt-in; links persist indefinitely unless an expiry is
   set.
-- **Idempotent dedup** — shortening the same URL twice under the same
+- **Idempotent dedup**: shortening the same URL twice under the same
   authenticated account returns the existing `short_code` instead of
   creating a duplicate. Different users get different codes. Anonymous
   requests are never deduped.
-- **API keys** — generated via `crypto/rand`, shown once at registration,
+- **API keys**: generated via `crypto/rand`, shown once at registration,
   only their SHA-256 hash is ever stored.
 
 ## Getting Started
@@ -205,7 +205,7 @@ url-shortener/
 ### Running Everything with Docker Compose
 
 One command brings up Postgres, Redis, etcd, Kafka, ClickHouse, the API
-server, and the Kafka consumer — with health checks ensuring each
+server, and the Kafka consumer, with health checks ensuring each
 service only starts once its dependencies are actually ready, and
 migrations (both Postgres and ClickHouse) applied automatically on
 startup:
@@ -242,14 +242,14 @@ Authenticated requests pass `Authorization: Bearer <api_key>`.
 
 ## Database Schema
 
-**Postgres** — `users`, `urls` (short_code, long_url, long_url_hash,
+**Postgres**: `users`, `urls` (short_code, long_url, long_url_hash,
 user_id, is_custom_alias, expires_at, is_active), with:
 - A unique index on `short_code` (the hot-path lookup)
 - A partial unique index on `(user_id, long_url_hash)` for per-user
   idempotent dedup
 - A partial index on `expires_at` for future cleanup jobs
 
-**ClickHouse** — `click_events(short_code, clicked_at)`, `MergeTree`
+**ClickHouse**: `click_events(short_code, clicked_at)`, `MergeTree`
 engine, ordered by `(short_code, clicked_at)`.
 
 ## Migrations
@@ -285,33 +285,33 @@ instead of returning the existing short code.
 
 ## Build Phases
 
-- [x] **Phase 0** — API contract + non-functional targets
-- [x] **Phase 1** — Core correctness (single-node Postgres, Snowflake IDs, no cache)
-- [x] **Phase 2** — Redis caching layer (cache-aside, write-through)
-- [x] **Phase 3** — Auth, rate limiting, horizontal scaling via etcd node-ID leasing
-- [ ] **Phase 4** — Data layer sharding (Postgres → ScyllaDB, deferred — load testing showed the backend, not the database, is the current bottleneck)
-- [x] **Phase 5** — Kafka + ClickHouse analytics pipeline
-- [ ] **Phase 6** — Edge/global distribution
-- [ ] **Phase 7** — Hardening (idempotency edge cases, chaos testing, TTL/expiry cleanup worker)
+- [x] **Phase 0** : API contract + non-functional targets
+- [x] **Phase 1** : Core correctness (single-node Postgres, Snowflake IDs, no cache)
+- [x] **Phase 2** : Redis caching layer (cache-aside, write-through)
+- [x] **Phase 3** : Auth, rate limiting, horizontal scaling via etcd node-ID leasing
+- [ ] **Phase 4** : Data layer sharding (Postgres → ScyllaDB, deferred : load testing showed the backend, not the database, is the current bottleneck)
+- [x] **Phase 5** : Kafka + ClickHouse analytics pipeline
+- [ ] **Phase 6** : Edge/global distribution
+- [ ] **Phase 7** : Hardening (idempotency edge cases, chaos testing, TTL/expiry cleanup worker)
 
 ## Known Trade-offs & Deferred Work
 
-- **Backend write-path bottleneck** — load testing points to the
+- **Backend write-path bottleneck** : load testing points to the
   application layer (possibly the Snowflake generator's mutex, possibly
   `pgxpool` connection pool sizing under real network latency) as the
   current throughput ceiling, not Postgres. Not yet root-caused.
-- **Check-then-act dedup race** — under true concurrency, two
+- **Check-then-act dedup race** : under true concurrency, two
   simultaneous first-time requests for the same user+URL could both miss
   the dedup check and one could fail. Rare and self-correcting; not yet
   hardened with a transaction or upsert.
-- **Cache staleness on deactivation** — cached entries for a URL that's
+- **Cache staleness on deactivation** : cached entries for a URL that's
   deactivated or expires are not actively evicted; they age out via TTL
   (1 hour). A `Delete` method exists on the cache interface for a future
   background reaper to use, but nothing calls it yet.
-- **`/stats` endpoint** — scoped in the original API design, not yet
+- **`/stats` endpoint** : scoped in the original API design, not yet
   built. `click_events` in ClickHouse already has the data.
 - **ClickHouse migrations run automatically on every consumer startup**
-  — convenient for solo development, but a deliberate trade-off some
+  : convenient for solo development, but a deliberate trade-off some
   production setups avoid in favor of reviewed, explicit schema changes.
 
 ## Roadmap
@@ -319,6 +319,6 @@ instead of returning the existing short code.
 1. Build the `/stats` endpoint against ClickHouse
 2. Root-cause the write-path bottleneck (mutex contention vs. connection
    pool sizing)
-3. Phase 6 — CDN/edge distribution for the redirect path
-4. Phase 7 — hardening: TTL/expiry cleanup worker (also invalidates
+3. Phase 6 : CDN/edge distribution for the redirect path
+4. Phase 7 : hardening: TTL/expiry cleanup worker (also invalidates
    cache), chaos testing, idempotency keys, circuit breakers
